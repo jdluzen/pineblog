@@ -17,7 +17,7 @@ namespace Opw.PineBlog.Mongo
         public MongoRepository(IMongoClient client, string mongoDbName)
         {
             var db = client.GetDatabase(mongoDbName);
-            _blogSettings = db.GetCollection<BlogSettings>(nameof(BlogSettings));
+            _blogSettings = db.GetCollection<BlogSettings>(nameof(BlogSettings));//TODO: would like to add a prefix for multiple instances in the same db
             _posts = db.GetCollection<Post>(nameof(Post));
             _authors = db.GetCollection<Author>(nameof(Author));
         }
@@ -55,14 +55,22 @@ namespace Opw.PineBlog.Mongo
             return await cursor.FirstOrDefaultAsync();
         }
 
-        public Task<BlogSettings> GetBlogSettingsAsync(CancellationToken cancellationToken)
+        public async Task<BlogSettings> GetBlogSettingsAsync(CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            IAsyncCursor<BlogSettings> cursor = await _blogSettings.FindAsync(bs => true);
+            return await cursor.FirstOrDefaultAsync();
         }
 
-        public Task<Post> GetNextPostAsync(Post currentPost, CancellationToken cancellationToken)
+        public async Task<Post> GetNextPostAsync(Post currentPost, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            FilterDefinition<Post> filterPublished = Builders<Post>.Filter.Gt(p => p.Published, currentPost.Published);
+            SortDefinition<Post> sortPublished = Builders<Post>.Sort.Ascending(p => p.Published);
+            IAsyncCursor<Post> cursor = await _posts.FindAsync(filterPublished, new FindOptions<Post, Post>
+            {
+                Sort = sortPublished
+            });
+
+            return await cursor.FirstOrDefaultAsync();
         }
 
         public Task<Post> GetPostByIdAsync(Guid id, CancellationToken cancellationToken)
