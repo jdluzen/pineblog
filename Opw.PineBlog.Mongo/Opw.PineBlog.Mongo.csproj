@@ -5,6 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="MongoDB.Driver" Version="2.10.4" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\src\Opw.PineBlog.Core\Opw.PineBlog.Core.csproj" />
   </ItemGroup>
 

@@ -37,28 +37,34 @@ namespace Opw.PineBlog.Mongo
         public async Task<Result<int>> DeleteBlogSettingsAsync(BlogSettings settings, CancellationToken cancellationToken)
         {
             //FilterDefinition<BlogSettings> idFilter = Builders<BlogSettings>.Filter.Eq(bs => bs.Id);
-            var delResult = await _blogSettings.DeleteManyAsync(bs => true);//TODO: this works for now, but would like to delete by Id in the future
+            var delResult = await _blogSettings.DeleteOneAsync(bs => true, cancellationToken);//TODO: this works for now, but would like to delete by Id in the future
             return Result<int>.Success(1);
         }
 
         public async Task<Result<int>> DeletePostAsync(Post post, CancellationToken cancellationToken)
         {
             FilterDefinition<Post> filterIdDef = Builders<Post>.Filter.Eq(p => p.Id, post.Id);
-            var delResult = await _posts.DeleteOneAsync(filterIdDef);
+            var delResult = await _posts.DeleteOneAsync(filterIdDef, cancellationToken);
             return Result<int>.Success(1);
         }
 
         public async Task<Author> GetAuthorByUsernameAsync(string username)
         {
             FilterDefinition<Author> filterUsernameDef = Builders<Author>.Filter.Eq(p => p.UserName, username);
-            IAsyncCursor<Author> cursor = await _authors.FindAsync(filterUsernameDef);
+            IAsyncCursor<Author> cursor = await _authors.FindAsync(filterUsernameDef, new FindOptions<Author, Author>
+            {
+                Limit = 1
+            });
             return await cursor.FirstOrDefaultAsync();
         }
 
         public async Task<BlogSettings> GetBlogSettingsAsync(CancellationToken cancellationToken)
         {
-            IAsyncCursor<BlogSettings> cursor = await _blogSettings.FindAsync(bs => true);
-            return await cursor.FirstOrDefaultAsync();
+            IAsyncCursor<BlogSettings> cursor = await _blogSettings.FindAsync(bs => true, new FindOptions<BlogSettings, BlogSettings>
+            {
+                Limit = 1
+            }, cancellationToken);
+            return await cursor.FirstOrDefaultAsync(cancellationToken);
         }
 
         public async Task<Post> GetNextPostAsync(Post currentPost, CancellationToken cancellationToken)
@@ -67,20 +73,31 @@ namespace Opw.PineBlog.Mongo
             SortDefinition<Post> sortPublished = Builders<Post>.Sort.Ascending(p => p.Published);
             IAsyncCursor<Post> cursor = await _posts.FindAsync(filterPublished, new FindOptions<Post, Post>
             {
+                Limit = 1,
                 Sort = sortPublished
-            });
+            }, cancellationToken);
 
-            return await cursor.FirstOrDefaultAsync();
+            return await cursor.FirstOrDefaultAsync(cancellationToken);
         }
 
-        public Task<Post> GetPostByIdAsync(Guid id, CancellationToken cancellationToken)
+        public async Task<Post> GetPostByIdAsync(Guid id, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            FilterDefinition<Post> filterIdDef = Builders<Post>.Filter.Eq(p => p.Id, id);
+            IAsyncCursor<Post> cursor = await _posts.FindAsync(filterIdDef, new FindOptions<Post, Post>
+            {
+                Limit = 1
+            }, cancellationToken);
+            return await cursor.FirstOrDefaultAsync(cancellationToken);
         }
 
-        public Task<Post> GetPostBySlugAsync(string slug, CancellationToken cancellationToken)
+        public async Task<Post> GetPostBySlugAsync(string slug, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            FilterDefinition<Post> filterSlugDef = Builders<Post>.Filter.Eq(p => p.Slug, slug);
+            IAsyncCursor<Post> cursor = await _posts.FindAsync(filterSlugDef, new FindOptions<Post, Post>
+            {
+                Limit = 1
+            }, cancellationToken);
+            return await cursor.FirstOrDefaultAsync(cancellationToken);
         }
 
         public Task<IList<Post>> GetPostListAsync(bool includeUnpublished, Pager pager, string category, PineBlogOptions options, CancellationToken cancellationToken)
@@ -88,34 +105,61 @@ namespace Opw.PineBlog.Mongo
             throw new NotImplementedException();
         }
 
-        public Task<Post> GetPreviousPostAsync(Post currentPost, CancellationToken cancellationToken)
+        public async Task<Post> GetPreviousPostAsync(Post currentPost, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            FilterDefinition<Post> filterPublished = Builders<Post>.Filter.Lt(p => p.Published, currentPost.Published);
+            SortDefinition<Post> sortPublished = Builders<Post>.Sort.Descending(p => p.Published);
+            IAsyncCursor<Post> cursor = await _posts.FindAsync(filterPublished, new FindOptions<Post, Post>
+            {
+                Limit = 1,
+                Sort = sortPublished
+            }, cancellationToken);
+
+            return await cursor.FirstOrDefaultAsync(cancellationToken);
         }
 
-        public Task<List<Post>> GetSyndicationPostsAsync(CancellationToken cancellationToken)
+        public async Task<List<Post>> GetSyndicationPostsAsync(CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            FilterDefinition<Post> filterPublished = Builders<Post>.Filter.Ne(p => p.Published, null);
+            SortDefinition<Post> sortPublished = Builders<Post>.Sort.Descending(p => p.Published);
+            IAsyncCursor<Post> cursor = await _posts.FindAsync(filterPublished, new FindOptions<Post, Post>
+            {
+                Limit = 25,
+                Sort = sortPublished
+            }, cancellationToken);
+
+            return await cursor.ToListAsync(cancellationToken);
         }
 
         public Task<Result<Post>> PublishPostAsync(Guid id, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            return SetPublishAsync(id, DateTime.UtcNow, cancellationToken);
         }
 
         public Task<Result<Post>> UnpublishPostAsync(Guid id, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            return SetPublishAsync(id, null, cancellationToken);
+        }
+        private async Task<Result<Post>> SetPublishAsync(Guid id, DateTime? published, CancellationToken cancellationToken)
+        {
+            FilterDefinition<Post> filterIdDef = Builders<Post>.Filter.Eq(p => p.Id, id);
+            UpdateDefinition<Post> updatePublishDef = Builders<Post>.Update.Set(p => p.Published, published);
+            return await _posts.FindOneAndUpdateAsync(filterIdDef, updatePublishDef, null, cancellationToken) is { } post ? Result<Post>.Success(post) : Result<Post>.Fail();
         }
 
-        public Task<Result<int>> UpdateBlogSettingsAsync(BlogSettings settings, CancellationToken cancellationToken)
+        public async Task<Result<int>> UpdateBlogSettingsAsync(BlogSettings settings, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            await _blogSettings.ReplaceOneAsync(bs => true, settings, new ReplaceOptions
+            {
+                IsUpsert = true
+            });
+            return Result<int>.Success(1);
         }
 
-        public Task<Result<int>> UpdatePostAsync(Post post, CancellationToken cancellationToken)
+        public async Task<Result<int>> UpdatePostAsync(Post post, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            await _posts.ReplaceOneAsync(p => post.Id == post.Id, post, (ReplaceOptions)null, cancellationToken);
+            return Result<int>.Success(1);
         }
     }
 }
