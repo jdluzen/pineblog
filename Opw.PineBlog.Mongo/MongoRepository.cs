@@ -100,9 +100,20 @@ namespace Opw.PineBlog.Mongo
             return await cursor.FirstOrDefaultAsync(cancellationToken);
         }
 
-        public Task<IList<Post>> GetPostListAsync(bool includeUnpublished, Pager pager, string category, PineBlogOptions options, CancellationToken cancellationToken)
+        public async Task<IList<Post>> GetPostListAsync(bool includeUnpublished, Pager pager, string category, PineBlogOptions options, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            if (includeUnpublished)
+            {
+                FilterDefinition<Post> filterIncludUnpiblished = Builders<Post>.Filter.Ne(p => p.Published, null);
+
+            }
+            IAsyncCursor<Post> cursor = await _posts.FindAsync(p => true, new FindOptions<Post, Post>
+            {
+                Limit = pager.ItemsPerPage,
+                Skip = (pager.CurrentPage - 1) * pager.ItemsPerPage
+            }, cancellationToken);
+
+            return await cursor.ToListAsync(cancellationToken);
         }
 
         public async Task<Post> GetPreviousPostAsync(Post currentPost, CancellationToken cancellationToken)
@@ -152,7 +163,7 @@ namespace Opw.PineBlog.Mongo
             await _blogSettings.ReplaceOneAsync(bs => true, settings, new ReplaceOptions
             {
                 IsUpsert = true
-            });
+            }, cancellationToken);
             return Result<int>.Success(1);
         }
 
